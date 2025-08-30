@@ -71,7 +71,7 @@ cd cosmic-language
 from cosmic_language import CosmicLanguageCodec
 
 # 创建编解码器实例
-codec = UniversalChineseBlockCodec()
+codec = CosmicLanguageCodec()
 
 # 编码文本
 text = "Hello 世界!"
