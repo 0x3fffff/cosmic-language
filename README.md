@@ -153,6 +153,9 @@ final_checksum = (checksum & 0x7) | (parity << 3)
 - **原创者**: [0x3fffff]([https://example.com/encoding-principles](http://ox3fffff.cn/))
 - **项目灵感**: 看到抖音的翻译会将方块字翻译成人物简介的Ai幻觉
 
+## ⭐️ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=0x3fffff/cosmic-language&type=Date)](https://www.star-history.com/#0x3fffff/cosmic-language&Date)
 
 ---
 
