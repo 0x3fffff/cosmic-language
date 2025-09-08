@@ -1,6 +1,6 @@
 # 宇宙语 (Cosmic Language) 🌌
 
-> 一种基于方块字符的通用编码系统，将GB2312/GBK字符转换为视觉化的"宇宙文字"
+> 一种基于方块字符的通用编码系统，将各种字符转换为视觉化的"宇宙文字"
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
