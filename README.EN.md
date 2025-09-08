@@ -1,5 +1,5 @@
 # Cosmic Language 🌌
-> A universal encoding system based on block characters that converts GB2312/GBK characters into visualized "cosmic text"
+> A universal encoding system based on block characters that converts characters into visualized "cosmic text"
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -15,10 +15,10 @@
 **Online Translator**: [http://dx3906.world](http://dx3906.world)
 
 ## 📖 Project Overview
-Cosmic Language is an innovative character encoding system that converts traditional GB2312/GBK encoding into visualized symbols composed of 16 different block characters. Each original character is encoded as 5 block characters, creating a unique "alien text" effect.
+Cosmic Language is an innovative character encoding system that converts traditional GB18030 (It includes all Unicode encodings) encoding into visualized symbols composed of 16 different block characters. Each original character is encoded as 5 block characters, creating a unique "alien text" effect.
 
 ### ✨ Features
-- 🎯 **Universal Support**: Full support for GB2312/GBK character sets, including Chinese characters, English letters, numbers, and punctuation
+- 🎯 **Universal Support**: Full support for GB18030 character sets, including the vast majority of rare Chinese characters and various characters in Unicode
 - 🔧 **Error Tolerance**: Built-in validation system with error detection and automatic correction
 - 🎨 **Visual Appeal**: Uses 16 different block characters to create unique visual effects
 - 🔍 **Smart Parsing**: Automatic character type recognition (single-byte/double-byte)
@@ -38,7 +38,7 @@ Cosmic Language uses 16 Unicode block characters, each corresponding to a 4-bit 
 
 ### Encoding Process
 1. **Character Analysis**: Identify character type (ASCII single-byte vs Chinese double-byte)
-2. **Byte Conversion**: Convert character to GB2312/GBK byte sequence
+2. **Byte Conversion**: Convert character to GB18030 byte sequence
 3. **Bit Grouping**: Convert byte sequence to 16-bit binary, split into 4 groups (4 bits each)
 4. **Block Mapping**: Each 4-bit group corresponds to one block character
 5. **Checksum Generation**: Calculate checksum of the first 4 blocks to generate the 5th checksum block
@@ -46,11 +46,15 @@ Cosmic Language uses 16 Unicode block characters, each corresponding to a 4-bit 
 ### Encoding Format
 ```
 Original Character → [4 Content Blocks] + [1 Checksum Block] = 5 Block Characters
+or
+Original Character → [4 Content Blocks] + [1 Checksum Block] + [4 Content Blocks] + [1 Checksum Block] = 10 Block Characters
 ```
 
 **Examples**:
 - Character 'A' → `▓▓▝▗▐`
 - Character '中' → `▜▞▜▓█`
+- Character '㐀' → `▘▗▄▚▓▛▛▄▚▗`
+- Character '🥰' → `▚▐▄▓▝▜▞▄▞▜`
 
 ## 🚀 Quick Start
 
@@ -74,7 +78,7 @@ print(f"Original: {text}")
 print(f"Cosmic Language: {encoded}")
 
 # Decode text
-decoded, start_pos, skipped = codec.decode_text(encoded)
+decoded = codec.decode_text(encoded)
 print(f"Decoded: {decoded}")
 ```
 
@@ -85,12 +89,14 @@ print(f"Decoded: {decoded}")
 | A | ASCII | 0x41 | 0000000001000001 | ▓▓▝▗▐ |
 | 中 | Chinese | 0xD6D0 | 1101011011010000 | ▜▞▜▓█ |
 | ！ | Full-width | 0xA3A1 | 1010001110100001 | ▌▄▌▗▄ |
+| 🥰 | emoji | 0x9530D636 | 10010101001100001101011000110110 | ▚▐▄▓▝▜▞▄▞▜ |
 
 ## 🔧 Technical Details
 
 ### Character Type Recognition
-- **Single-byte Characters** (TYPE_SINGLE_BYTE = 0): ASCII characters, encoding value < 128
+- **Single-byte Characters** (TYPE_SINGLE_BYTE = 0): ASCII characters.
 - **Double-byte Characters** (TYPE_DOUBLE_BYTE = 1): Chinese characters, full-width symbols, etc.
+- **Four-byte Characters** (TYPE_DOUBLE_BYTE = 3): All kinds of rare characters, symbols and expressions, etc.
 
 ### Checksum Algorithm
 The validation system uses XOR operations combined with parity checking:
@@ -125,9 +131,7 @@ Cosmic Version: ▀▝▛▄▀▙▌▀▄▟▌▄▌▀▛▀▌▀▓▙▙�
 - **Data Steganography**: Hide information within block characters
 
 ## 🐛 Known Issues
-- Some rare Chinese characters may require GBK encoding
-- Very long texts will grow significantly after encoding (5x length)
-- Some emojis and special Unicode characters require special handling
+- None
 
 ## 📜 License
 This project is open source under the [MIT License](LICENSE).
