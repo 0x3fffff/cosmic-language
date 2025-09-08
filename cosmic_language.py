@@ -1,8 +1,8 @@
 class CosmicLanguageCodec:
     """
-    通用的块字符编解码器 - 支持所有GB2312字符
+    通用的块字符编解码器 - 支持所有GB18030字符
     包括：汉字、英文字母、数字、标点符号等
-    每个字符编码为5个块字符：4个内容字符 + 1个校验字符
+    每个字符编码为多个块字符：每4个内容字符 + 1个校验字符
     """
 
     def __init__(self):
@@ -15,27 +15,22 @@ class CosmicLanguageCodec:
 
         self.binary_to_block = {v: k for k, v in self.block_chars.items()}
         self.block_chars_set = set(self.block_chars.keys())
-        self.char_group_size = 5  # 每个字符占5个块字符
 
         # 字符类型标识
         self.TYPE_SINGLE_BYTE = 0  # ASCII字符（1字节）
         self.TYPE_DOUBLE_BYTE = 1  # 双字节字符（汉字、全角符号等）
+        self.TYPE_THREE_BYTE = 2  # 三字节字符
+        self.TYPE_FOUR_BYTE = 3  # 四字节字符
 
     def _get_char_encoding_info(self, char):
-        """获取字符的编码信息"""
+        """获取字符的GB18030编码信息"""
         try:
-            # 尝试GB2312编码
-            gb_bytes = char.encode('gb2312')
-            return gb_bytes, len(gb_bytes) == 1
+            gb18030_bytes = char.encode('gb18030')
+            return gb18030_bytes, len(gb18030_bytes)
         except UnicodeEncodeError:
-            # 如果GB2312失败，尝试GBK
-            try:
-                gbk_bytes = char.encode('gbk')
-                return gbk_bytes, len(gbk_bytes) == 1
-            except UnicodeEncodeError:
-                # 如果都失败，使用UTF-8作为备选
-                utf8_bytes = char.encode('utf-8')
-                return utf8_bytes, False
+            # 如果GB18030失败，使用UTF-8作为备选
+            utf8_bytes = char.encode('utf-8')
+            return utf8_bytes, len(utf8_bytes)
 
     def _calculate_checksum(self, four_blocks, char_type):
         """计算4个块字符的校验码"""
@@ -56,52 +51,61 @@ class CosmicLanguageCodec:
         return checksum_block == expected_checksum
 
     def encode_char(self, char):
-        """将单个字符编码为5个块字符"""
+        """将单个字符编码为块字符"""
         try:
-            encoded_bytes, is_single_byte = self._get_char_encoding_info(char)
+            encoded_bytes, byte_length = self._get_char_encoding_info(char)
 
             if len(encoded_bytes) == 0:
                 return '▓▓▓▓▓'  # 错误标记
 
-            # 处理不同长度的字节序列
-            if len(encoded_bytes) == 1:
-                # 单字节字符（ASCII）
+            # 根据字节长度处理
+            if byte_length == 1:
+                # 单字节字符（ASCII）- 补齐到16位
                 value = encoded_bytes[0]
-                bits = format(value, '08b').zfill(16)  # 补齐到16位
+                bits = format(value, '016b')  # 直接补齐到16位
                 char_type = self.TYPE_SINGLE_BYTE
 
-            elif len(encoded_bytes) == 2:
-                # 双字节字符（大部分汉字和全角符号）
+            elif byte_length == 2:
+                # 双字节字符 - 保持16位
                 value = (encoded_bytes[0] << 8) | encoded_bytes[1]
                 bits = format(value, '016b')
                 char_type = self.TYPE_DOUBLE_BYTE
 
-            elif len(encoded_bytes) == 3:
-                # 三字节UTF-8字符，压缩到16位
+            elif byte_length == 3:
+                # 三字节字符 - 高位补0到32位
                 value = (encoded_bytes[0] << 16) | (encoded_bytes[1] << 8) | encoded_bytes[2]
-                # 使用哈希函数压缩到16位
-                compressed = ((value >> 8) ^ (value & 0xFFFF)) & 0xFFFF
-                bits = format(compressed, '016b')
-                char_type = self.TYPE_DOUBLE_BYTE  # 当作双字节处理
+                bits = format(value, '032b')  # 补齐到32位
+                char_type = self.TYPE_THREE_BYTE
 
             else:
-                # 更长的UTF-8序列，使用哈希压缩
-                hash_val = hash(encoded_bytes) & 0xFFFF
-                bits = format(hash_val, '016b')
-                char_type = self.TYPE_DOUBLE_BYTE
+                # 四字节字符 - 保持32位
+                value = 0
+                for i, byte_val in enumerate(encoded_bytes[:4]):
+                    value |= byte_val << (8 * (3 - i))
+                bits = format(value, '032b')
+                char_type = self.TYPE_FOUR_BYTE
 
-            # 分成4组，每组4位
-            blocks = []
-            for i in range(0, 16, 4):
-                four_bits = bits[i:i + 4]
-                block = self.binary_to_block.get(four_bits, '▓')
-                blocks.append(block)
+            # 分组处理：每4位一组，每4组加一个校验位
+            result_blocks = []
+            for group_start in range(0, len(bits), 16):
+                group_bits = bits[group_start:group_start + 16]
+                if len(group_bits) < 16:
+                    group_bits = group_bits.ljust(16, '0')  # 不足16位补0
 
-            # 计算并添加校验位
-            checksum = self._calculate_checksum(blocks, char_type)
-            blocks.append(checksum)
+                # 分成4组，每组4位
+                blocks = []
+                for i in range(0, 16, 4):
+                    four_bits = group_bits[i:i + 4]
+                    block = self.binary_to_block.get(four_bits, '▓')
+                    blocks.append(block)
 
-            return ''.join(blocks)
+                # 计算并添加校验位
+                checksum = self._calculate_checksum(blocks, char_type)
+                blocks.append(checksum)
+
+                result_blocks.extend(blocks)
+
+            return ''.join(result_blocks)
 
         except Exception as e:
             print(f"编码错误 '{char}': {e}")
@@ -114,8 +118,8 @@ class CosmicLanguageCodec:
             result.append(self.encode_char(char))
         return ''.join(result)
 
-    def _try_decode_group(self, group):
-        """尝试解码一个5字符组"""
+    def _try_decode_group(self, group, expected_char_type=None):
+        """尝试解码一个5字符组（4个内容 + 1个校验）"""
         if len(group) != 5:
             return None, False, None
 
@@ -126,117 +130,150 @@ class CosmicLanguageCodec:
         content_blocks = group[:4]
         checksum_block = group[4]
 
-        # 尝试两种字符类型
-        for char_type in [self.TYPE_SINGLE_BYTE, self.TYPE_DOUBLE_BYTE]:
+        # 如果指定了字符类型，只尝试该类型
+        char_types_to_try = [expected_char_type] if expected_char_type is not None else [
+            self.TYPE_SINGLE_BYTE, self.TYPE_DOUBLE_BYTE,
+            self.TYPE_THREE_BYTE, self.TYPE_FOUR_BYTE
+        ]
+
+        for char_type in char_types_to_try:
             if self._verify_checksum(content_blocks, checksum_block, char_type):
-                # 解码内容
                 try:
                     bits = ''
                     for block in content_blocks:
                         bits += self.block_chars[block]
 
                     value = int(bits, 2)
+                    return value, True, char_type
 
-                    if char_type == self.TYPE_SINGLE_BYTE:
-                        # 单字节字符
-                        if value < 256:  # 确保是有效的单字节值
-                            decoded_char = bytes([value]).decode('gb2312')
-                            return decoded_char, True, char_type
-                    else:
-                        # 双字节字符
-                        if value >= 256:  # 确保是有效的双字节值
-                            byte1 = (value >> 8) & 0xFF
-                            byte2 = value & 0xFF
-
-                            # 尝试GB2312解码
-                            try:
-                                decoded_char = bytes([byte1, byte2]).decode('gb2312')
-                                return decoded_char, True, char_type
-                            except:
-                                # 如果GB2312失败，尝试GBK
-                                try:
-                                    decoded_char = bytes([byte1, byte2]).decode('gbk')
-                                    return decoded_char, True, char_type
-                                except:
-                                    pass
-
-                except Exception as e:
+                except Exception:
                     continue
 
         return None, False, None
 
-    def find_valid_start_position(self, encoded_text, start_pos=0):
-        """
-        从指定位置开始寻找有效的解码起始位置
-        返回: (起始位置, 是否找到)
-        """
-        max_search_range = min(self.char_group_size, len(encoded_text) - start_pos)
+    def _decode_character_from_groups(self, groups_data):
+        """从多个组数据中解码出字符"""
+        if not groups_data:
+            return None
 
-        for offset in range(max_search_range):
-            pos = start_pos + offset
-            if pos + self.char_group_size > len(encoded_text):
-                continue
+        # 根据组数量判断字符类型
+        if len(groups_data) == 1:
+            # 单组：单字节或双字节
+            value, is_valid, char_type = groups_data[0]
+            if not is_valid:
+                return None
 
-            group = encoded_text[pos:pos + self.char_group_size]
-            decoded_char, is_valid, char_type = self._try_decode_group(group)
+            try:
+                if char_type == self.TYPE_SINGLE_BYTE:
+                    # 单字节字符，取低8位
+                    byte_val = value & 0xFF
+                    return bytes([byte_val]).decode('gb18030')
+                elif char_type == self.TYPE_DOUBLE_BYTE:
+                    # 双字节字符
+                    byte1 = (value >> 8) & 0xFF
+                    byte2 = value & 0xFF
+                    return bytes([byte1, byte2]).decode('gb18030')
+            except:
+                return None
 
-            if is_valid:
-                return pos, True
+        elif len(groups_data) == 2:
+            # 双组：三字节或四字节
+            value1, is_valid1, char_type1 = groups_data[0]
+            value2, is_valid2, char_type2 = groups_data[1]
 
-        return start_pos, False
+            if not (is_valid1 and is_valid2):
+                return None
 
-    def decode_from_position(self, encoded_text, start_pos=0):
-        """
-        从指定位置开始解码，自动寻找有效起始点
-        返回: (解码结果, 实际起始位置, 跳过的字符数, 解码详情)
-        """
-        # 寻找有效的起始位置
-        valid_start, found = self.find_valid_start_position(encoded_text, start_pos)
-        skipped_chars = valid_start - start_pos
+            try:
+                if char_type1 == self.TYPE_THREE_BYTE:
+                    # 三字节字符：第一组的低16位 + 第二组的高8位
+                    combined_value = (value1 << 16) | value2
+                    byte1 = (combined_value >> 16) & 0xFF
+                    byte2 = (combined_value >> 8) & 0xFF
+                    byte3 = combined_value & 0xFF
+                    return bytes([byte1, byte2, byte3]).decode('gb18030')
+                elif char_type1 == self.TYPE_FOUR_BYTE:
+                    # 四字节字符：两组32位数据
+                    combined_value = (value1 << 16) | value2
+                    byte1 = (combined_value >> 24) & 0xFF
+                    byte2 = (combined_value >> 16) & 0xFF
+                    byte3 = (combined_value >> 8) & 0xFF
+                    byte4 = combined_value & 0xFF
+                    return bytes([byte1, byte2, byte3, byte4]).decode('gb18030')
+            except:
+                return None
 
-        if not found:
-            return "", start_pos, len(encoded_text) - start_pos, []
+        return None
 
+    def decode_text(self, encoded_text, show_details=False):
+        """解码文本"""
         result = []
         decode_details = []
-        current_pos = valid_start
+        pos = 0
 
-        while current_pos + self.char_group_size <= len(encoded_text):
-            group = encoded_text[current_pos:current_pos + self.char_group_size]
-            decoded_char, is_valid, char_type = self._try_decode_group(group)
+        while pos + 5 <= len(encoded_text):
+            # 尝试解码当前位置的5字符组
+            group = encoded_text[pos:pos + 5]
+            value, is_valid, char_type = self._try_decode_group(group)
 
             if is_valid:
-                result.append(decoded_char)
-                type_name = "单字节" if char_type == self.TYPE_SINGLE_BYTE else "双字节"
-                decode_details.append({
-                    'position': current_pos,
-                    'char': decoded_char,
-                    'type': type_name,
-                    'blocks': group
-                })
-                current_pos += self.char_group_size
-            else:
-                # 遇到无效组，尝试寻找下一个有效位置
-                next_valid, found_next = self.find_valid_start_position(encoded_text, current_pos + 1)
-                if found_next:
-                    current_pos = next_valid
+                if char_type in [self.TYPE_SINGLE_BYTE, self.TYPE_DOUBLE_BYTE]:
+                    # 单组字符
+                    char = self._decode_character_from_groups([(value, is_valid, char_type)])
+                    if char:
+                        result.append(char)
+                        if show_details:
+                            decode_details.append({
+                                'position': pos,
+                                'char': char,
+                                'type': ['单字节', '双字节', '三字节', '四字节'][char_type],
+                                'blocks': group
+                            })
+                    pos += 5
+
+                elif char_type in [self.TYPE_THREE_BYTE, self.TYPE_FOUR_BYTE]:
+                    # 多组字符，需要读取下一组
+                    if pos + 10 <= len(encoded_text):
+                        next_group = encoded_text[pos + 5:pos + 10]
+                        next_value, next_is_valid, next_char_type = self._try_decode_group(next_group, char_type)
+
+                        if next_is_valid:
+                            char = self._decode_character_from_groups([
+                                (value, is_valid, char_type),
+                                (next_value, next_is_valid, next_char_type)
+                            ])
+                            if char:
+                                result.append(char)
+                                if show_details:
+                                    decode_details.append({
+                                        'position': pos,
+                                        'char': char,
+                                        'type': ['单字节', '双字节', '三字节', '四字节'][char_type],
+                                        'blocks': group + next_group
+                                    })
+                                pos += 10
+                                continue
+
+                    # 如果无法读取完整的多组字符，跳过
+                    pos += 1
                 else:
-                    break
+                    pos += 1
+            else:
+                pos += 1
 
-        return ''.join(result), valid_start, skipped_chars, decode_details
-
-    def decode_text(self, encoded_text, start_pos=0, show_details=False):
-        """完整解码文本"""
-        result, actual_start, skipped, details = self.decode_from_position(encoded_text, start_pos)
         if show_details:
-            return result, actual_start, skipped, details
-        return result, actual_start, skipped
+            return ''.join(result), decode_details
+        return ''.join(result)
 
     def analyze_text(self, text):
         """分析文本中的字符类型"""
         analysis = {
-            'ascii': [],  # ASCII字符
+            'single_byte': [],  # 单字节字符
+            'double_byte': [],  # 双字节字符
+            'three_byte': [],  # 三字节字符
+            'four_byte': [],  # 四字节字符
             'chinese': [],  # 汉字
+            'ascii': [],  # ASCII字符
             'symbols': [],  # 符号
             'numbers': [],  # 数字
             'punctuation': [],  # 标点
@@ -245,9 +282,20 @@ class CosmicLanguageCodec:
 
         for char in text:
             try:
-                encoded_bytes, is_single = self._get_char_encoding_info(char)
+                encoded_bytes, byte_length = self._get_char_encoding_info(char)
 
-                if is_single and len(encoded_bytes) == 1:
+                # 按字节长度分类
+                if byte_length == 1:
+                    analysis['single_byte'].append(char)
+                elif byte_length == 2:
+                    analysis['double_byte'].append(char)
+                elif byte_length == 3:
+                    analysis['three_byte'].append(char)
+                elif byte_length == 4:
+                    analysis['four_byte'].append(char)
+
+                # 按字符类型分类
+                if byte_length == 1 and len(encoded_bytes) == 1:
                     code = encoded_bytes[0]
                     if 32 <= code <= 126:  # 可打印ASCII
                         if '0' <= char <= '9':
@@ -272,3 +320,4 @@ class CosmicLanguageCodec:
                 analysis['others'].append(char)
 
         return analysis
+
